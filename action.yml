@@ -1,0 +1,205 @@
+name: 'Pipery Java CI'
+description: 'CI pipeline for Java: SAST, SCA, lint, build, test, versioning, packaging, release, reintegration'
+inputs:
+  project_path:
+    description: 'Path to the project source tree the action should operate on.'
+    required: false
+    default: '.'
+  config_file:
+    description: 'Path to Pipery config file.'
+    required: false
+    default: '.github/pipery/config.yaml'
+  java_version:
+    description: 'Java version to use.'
+    required: false
+    default: '21'
+  build_tool:
+    description: 'Build tool to use: auto, maven, gradle, or groovy.'
+    required: false
+    default: 'auto'
+  tests_path:
+    description: 'Test target passed to the build tool (e.g. a test class or pattern).'
+    required: false
+    default: ''
+  registry:
+    description: 'Container registry for packaging.'
+    required: false
+    default: 'ghcr.io'
+  registry_username:
+    description: 'Registry username for authentication.'
+    required: false
+    default: ''
+  registry_password:
+    description: 'Registry password for authentication.'
+    required: false
+    default: ''
+  github_token:
+    description: 'GitHub token for release and reintegration steps.'
+    required: false
+    default: ''
+  version_bump:
+    description: 'Version bump type: patch, minor, or major.'
+    required: false
+    default: 'patch'
+  log_file:
+    description: 'Path to the JSONL log file written during the run.'
+    required: false
+    default: 'pipery.jsonl'
+  skip_sast:
+    description: 'Skip SAST step.'
+    required: false
+    default: 'false'
+  skip_sca:
+    description: 'Skip SCA step.'
+    required: false
+    default: 'false'
+  skip_lint:
+    description: 'Skip lint step.'
+    required: false
+    default: 'false'
+  skip_build:
+    description: 'Skip build step.'
+    required: false
+    default: 'false'
+  skip_test:
+    description: 'Skip test step.'
+    required: false
+    default: 'false'
+  skip_versioning:
+    description: 'Skip versioning step.'
+    required: false
+    default: 'false'
+  skip_packaging:
+    description: 'Skip packaging step.'
+    required: false
+    default: 'false'
+  skip_release:
+    description: 'Skip release step.'
+    required: false
+    default: 'false'
+  skip_reintegration:
+    description: 'Skip reintegration step.'
+    required: false
+    default: 'false'
+  target_branch:
+    description: 'Target branch for reintegration.'
+    required: false
+    default: 'main'
+runs:
+  using: composite
+  steps:
+    - name: Setup psh
+      shell: bash
+      run: ${{ github.action_path }}/src/setup-psh.sh
+      env:
+        INPUT_LOG_FILE: ${{ inputs.log_file }}
+
+    - name: Load config
+      shell: bash
+      run: ${{ github.action_path }}/src/read-config.sh
+      env:
+        INPUT_CONFIG_FILE: ${{ inputs.config_file }}
+
+    - name: Install pipery-tooling
+      shell: bash
+      run: |
+        pip install git+https://github.com/pipery-dev/pipery-tooling.git --quiet
+
+    - name: SAST
+      if: ${{ inputs.skip_sast != 'true' }}
+      shell: bash
+      run: ${{ github.action_path }}/src/step-sast.sh
+      env:
+        INPUT_PROJECT_PATH: ${{ inputs.project_path }}
+        INPUT_LOG_FILE: ${{ inputs.log_file }}
+
+    - name: SCA
+      if: ${{ inputs.skip_sca != 'true' }}
+      shell: bash
+      run: ${{ github.action_path }}/src/step-sca.sh
+      env:
+        INPUT_PROJECT_PATH: ${{ inputs.project_path }}
+        INPUT_BUILD_TOOL: ${{ inputs.build_tool }}
+        INPUT_LOG_FILE: ${{ inputs.log_file }}
+
+    - name: Lint
+      if: ${{ inputs.skip_lint != 'true' }}
+      shell: bash
+      run: ${{ github.action_path }}/src/step-lint.sh
+      env:
+        INPUT_PROJECT_PATH: ${{ inputs.project_path }}
+        INPUT_BUILD_TOOL: ${{ inputs.build_tool }}
+        INPUT_LOG_FILE: ${{ inputs.log_file }}
+
+    - name: Build
+      if: ${{ inputs.skip_build != 'true' }}
+      shell: bash
+      run: ${{ github.action_path }}/src/step-build.sh
+      env:
+        INPUT_PROJECT_PATH: ${{ inputs.project_path }}
+        INPUT_BUILD_TOOL: ${{ inputs.build_tool }}
+        INPUT_LOG_FILE: ${{ inputs.log_file }}
+
+    - name: Test
+      if: ${{ inputs.skip_test != 'true' }}
+      shell: bash
+      run: ${{ github.action_path }}/src/step-test.sh
+      env:
+        INPUT_PROJECT_PATH: ${{ inputs.project_path }}
+        INPUT_BUILD_TOOL: ${{ inputs.build_tool }}
+        INPUT_TESTS_PATH: ${{ inputs.tests_path }}
+        INPUT_LOG_FILE: ${{ inputs.log_file }}
+
+    - name: Version
+      if: ${{ inputs.skip_versioning != 'true' }}
+      shell: bash
+      run: ${{ github.action_path }}/src/step-version.sh
+      env:
+        INPUT_PROJECT_PATH: ${{ inputs.project_path }}
+        INPUT_LOG_FILE: ${{ inputs.log_file }}
+        INPUT_VERSION_BUMP: ${{ inputs.version_bump }}
+
+    - name: Package
+      if: ${{ inputs.skip_packaging != 'true' }}
+      shell: bash
+      run: ${{ github.action_path }}/src/step-package.sh
+      env:
+        INPUT_PROJECT_PATH: ${{ inputs.project_path }}
+        INPUT_BUILD_TOOL: ${{ inputs.build_tool }}
+        INPUT_LOG_FILE: ${{ inputs.log_file }}
+
+    - name: Release
+      if: ${{ inputs.skip_release != 'true' }}
+      shell: bash
+      run: ${{ github.action_path }}/src/step-release.sh
+      env:
+        INPUT_PROJECT_PATH: ${{ inputs.project_path }}
+        INPUT_LOG_FILE: ${{ inputs.log_file }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+        GITHUB_SHA: ${{ github.sha }}
+
+    - name: Reintegrate
+      if: ${{ inputs.skip_reintegration != 'true' }}
+      shell: bash
+      run: ${{ github.action_path }}/src/step-reintegrate.sh
+      env:
+        INPUT_PROJECT_PATH: ${{ inputs.project_path }}
+        INPUT_LOG_FILE: ${{ inputs.log_file }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_TARGET_BRANCH: ${{ inputs.target_branch }}
+
+    - name: Upload logs
+      if: always()
+      shell: bash
+      run: |
+        LOG="${INPUT_LOG_FILE:-pipery.jsonl}"
+        if [ -f "$LOG" ]; then
+          echo "Build log written to $LOG"
+          cat "$LOG"
+        fi
+      env:
+        INPUT_LOG_FILE: ${{ inputs.log_file }}
+
+branding:
+  icon: package
+  color: blue
