@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
 ## [0.1.0] - Initial scaffold
 
 - Initial Java CI action scaffold
