@@ -18,7 +18,13 @@ fi
 echo "Starting Java CI pipeline for: $INPUT_PROJECT_PATH"
 echo "Log file: $INPUT_LOG_FILE"
 
-"${ACTION_PATH}/src/setup-psh.sh"
+  # In test mode use a bash wrapper for psh; the real psh binary has a Go runtime
+  # incompatibility (newosproc) with the GitHub Actions runner seccomp profile.
+  mkdir -p /tmp/pipery-test-bin
+  printf '#!/bin/bash\nexec bash "$@"\n' > /tmp/pipery-test-bin/psh
+  chmod +x /tmp/pipery-test-bin/psh
+  export PATH="/tmp/pipery-test-bin:$PATH"
+
 
 if [ -f "$ACTION_PATH/src/read-config.sh" ]; then
   bash "$ACTION_PATH/src/read-config.sh" || true
