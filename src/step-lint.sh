@@ -12,7 +12,7 @@ if [ "$BUILD_TOOL" = "auto" ]; then
     BUILD_TOOL="maven"
   elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
     BUILD_TOOL="gradle"
-  elif ls ./*.groovy 2>/dev/null | grep -q .; then
+  elif compgen -G "./*.groovy" > /dev/null 2>&1; then
     BUILD_TOOL="groovy"
   else
     BUILD_TOOL="maven"

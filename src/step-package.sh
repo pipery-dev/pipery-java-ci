@@ -12,7 +12,7 @@ if [ "$BUILD_TOOL" = "auto" ]; then
     BUILD_TOOL="maven"
   elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
     BUILD_TOOL="gradle"
-  elif ls ./*.groovy 2>/dev/null | grep -q .; then
+  elif compgen -G "./*.groovy" > /dev/null 2>&1; then
     BUILD_TOOL="groovy"
   else
     BUILD_TOOL="maven"
@@ -35,11 +35,10 @@ case "$BUILD_TOOL" in
     [ -f "gradlew" ] && GRADLE_CMD="./gradlew"
     "$GRADLE_CMD" assemble
     # Copy JARs/WARs to dist/
-    find build/libs -name "*.jar" -o -name "*.war" 2>/dev/null \
-      | xargs -I{} cp {} dist/ 2>/dev/null || true
+    find build/libs \( -name "*.jar" -o -name "*.war" \) -print0 2>/dev/null | xargs -r -0 -I{} cp {} dist/ || true
     ;;
   groovy)
-    GROOVY_SCRIPT=$(ls ./*.groovy 2>/dev/null | head -1)
+    GROOVY_SCRIPT=$(find . -maxdepth 1 -name "*.groovy" 2>/dev/null | head -1)
     if [ -n "$GROOVY_SCRIPT" ]; then
       cp "$GROOVY_SCRIPT" dist/
     else
