@@ -12,7 +12,7 @@ if [ "$BUILD_TOOL" = "auto" ]; then
     BUILD_TOOL="maven"
   elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
     BUILD_TOOL="gradle"
-  elif ls ./*.groovy 2>/dev/null | grep -q .; then
+  elif compgen -G "./*.groovy" > /dev/null 2>&1; then
     BUILD_TOOL="groovy"
   else
     BUILD_TOOL="maven"
@@ -31,7 +31,7 @@ case "$BUILD_TOOL" in
     "$GRADLE_CMD" build -x test
     ;;
   groovy)
-    GROOVY_SCRIPT=$(ls ./*.groovy 2>/dev/null | head -1)
+    GROOVY_SCRIPT=$(find . -maxdepth 1 -name "*.groovy" 2>/dev/null | head -1)
     if [ -n "$GROOVY_SCRIPT" ]; then
       groovy "$GROOVY_SCRIPT"
     else
