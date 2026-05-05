@@ -3,7 +3,7 @@
 
 variables:
   PROJECT_PATH: "."
-  CONFIG_FILE: ".github/pipery/config.yaml"
+  CONFIG_FILE: ".pipery/config.yaml"
   JAVA_VERSION: "21"
   BUILD_TOOL: "auto"  # auto, maven, gradle, groovy
   TESTS_PATH: ""
