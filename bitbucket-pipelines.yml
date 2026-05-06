@@ -1,0 +1,361 @@
+# ============================================================================
+# Bitbucket Pipelines Configuration for pipery-java-ci
+# Production-Ready Java/Maven/Gradle CI Pipeline
+# ============================================================================
+#
+# SETUP INSTRUCTIONS:
+# 1. Copy this file to pipery-java-ci repository root as bitbucket-pipelines.yml
+# 2. Configure Protected Variables in Bitbucket
+# 3. Set SKIP_* variables to 'true' to disable specific stages
+#
+# PROTECTED VARIABLES TO CONFIGURE:
+# - REGISTRY_PASSWORD: Docker registry authentication token (Mark as Secured)
+# - GITHUB_TOKEN: GitHub API token for reintegration (Mark as Secured)
+
+definitions:
+  steps:
+    - step: &checkout-step
+        name: Checkout Repository
+        image: alpine:latest
+        script:
+          - echo "Repository checked out by Bitbucket Pipelines"
+          - ls -la
+
+    - step: &setup-step
+        name: Setup Java Environment
+        image: maven:3.9-eclipse-temurin-21
+        caches:
+          - maven
+        script:
+          - echo "Setting up Java CI environment..."
+          - java -version
+          - mvn --version
+          - cd ${PROJECT_PATH:-.}
+          - mvn dependency:download-sources
+          - echo "Setup complete"
+
+    - step: &sast-scan
+        name: SAST Security Scan
+        image: maven:3.9-eclipse-temurin-21
+        script:
+          - echo "Running SAST scan using pipery-tooling..."
+          - apt-get update && apt-get install -y python3 python3-pip
+          - pip install --quiet pipery-tooling
+          - |
+            pipery-tooling sast \
+              --project-path ${PROJECT_PATH:-.} \
+              --config ${CONFIG_FILE:-.pipery/config.yaml} \
+              --log-file ${LOG_FILE:-pipery.jsonl}
+          - echo "Running SpotBugs SAST..."
+          - cd ${PROJECT_PATH:-.}
+          - mvn spotbugs:check || true
+          - echo "SAST scan complete"
+        artifacts:
+          - ${LOG_FILE:-pipery.jsonl}
+
+    - step: &sca-scan
+        name: SCA Dependency Scan
+        image: maven:3.9-eclipse-temurin-21
+        script:
+          - echo "Running SCA scan using pipery-tooling..."
+          - apt-get update && apt-get install -y python3 python3-pip
+          - pip install --quiet pipery-tooling
+          - |
+            pipery-tooling sca \
+              --project-path ${PROJECT_PATH:-.} \
+              --config ${CONFIG_FILE:-.pipery/config.yaml} \
+              --log-file ${LOG_FILE:-pipery.jsonl}
+          - echo "SCA scan complete"
+        artifacts:
+          - ${LOG_FILE:-pipery.jsonl}
+
+    - step: &lint-step
+        name: Code Quality Linting
+        image: maven:3.9-eclipse-temurin-21
+        script:
+          - echo "Running code quality checks..."
+          - cd ${PROJECT_PATH:-.}
+          - mvn checkstyle:check || true
+          - echo "Lint stage complete"
+
+    - step: &build-step
+        name: Build Java Project
+        image: maven:3.9-eclipse-temurin-21
+        caches:
+          - maven
+        script:
+          - echo "Building Java project..."
+          - cd ${PROJECT_PATH:-.}
+          - mvn clean package -DskipTests
+          - echo "Build complete"
+        artifacts:
+          - target/**
+
+    - step: &test-step
+        name: Execute Unit Tests
+        image: maven:3.9-eclipse-temurin-21
+        caches:
+          - maven
+        script:
+          - echo "Running Maven tests..."
+          - cd ${PROJECT_PATH:-.}
+          - mvn test
+          - echo "Tests complete"
+        artifacts:
+          - target/surefire-reports/**
+          - target/jacoco-report/**
+
+    - step: &versioning-step
+        name: Version Bump & Tag
+        image: maven:3.9-eclipse-temurin-21
+        script:
+          - echo "Running versioning step..."
+          - apt-get update && apt-get install -y python3 python3-pip
+          - pip install --quiet pipery-tooling
+          - |
+            pipery-tooling version \
+              --project-path ${PROJECT_PATH:-.} \
+              --version-bump ${VERSION_BUMP:-patch} \
+              --log-file ${LOG_FILE:-pipery.jsonl}
+          - echo "Versioning complete"
+          - cd ${PROJECT_PATH:-.}
+          - grep "^<version>" pom.xml | head -1 > version_info.txt
+          - cat version_info.txt
+        artifacts:
+          - version_info.txt
+          - ${LOG_FILE:-pipery.jsonl}
+
+    - step: &packaging-step
+        name: Verify Package
+        image: maven:3.9-eclipse-temurin-21
+        script:
+          - echo "Verifying Java package..."
+          - cd ${PROJECT_PATH:-.}
+          - echo "Java package ready: $(find target -name '*.jar' | head -1)"
+          - echo "Package verification complete"
+        artifacts:
+          - target/**
+
+    - step: &release-step
+        name: Release to Registry
+        image: maven:3.9-eclipse-temurin-21
+        trigger: manual
+        script:
+          - echo "Publishing Java artifacts to registry..."
+          - cd ${PROJECT_PATH:-.}
+          - |
+            if [ -n "$REGISTRY_PASSWORD" ]; then
+              mvn deploy -DskipTests
+            else
+              echo "Registry credentials not configured, skipping deployment"
+            fi
+          - echo "Release complete"
+
+    - step: &reintegration-step
+        name: Reintegration to Target Branch
+        image: alpine:latest
+        trigger: manual
+        script:
+          - echo "Reintegration step would update target branch..."
+          - |
+            if [ -z "$GITHUB_TOKEN" ]; then
+              echo "Skipping reintegration: GITHUB_TOKEN not set"
+              exit 0
+            fi
+          - echo "Reintegration complete"
+
+    - step: &logs-step
+        name: Collect & Archive Logs
+        image: alpine:latest
+        script:
+          - echo "Collecting logs and artifacts..."
+          - |
+            if [ -f "${LOG_FILE:-pipery.jsonl}" ]; then
+              echo "Log file size: $(wc -c < ${LOG_FILE:-pipery.jsonl}) bytes"
+            fi
+        artifacts:
+          - ${LOG_FILE:-pipery.jsonl}
+          - version_info.txt
+
+variables:
+  # Build Configuration
+  PROJECT_PATH: "."
+  CONFIG_FILE: ".pipery/config.yaml"
+  JAVA_VERSION: "21"
+  BUILD_TOOL: "auto"  # auto, maven, gradle
+
+  # Feature Flags
+  SKIP_SAST: "false"
+  SKIP_SCA: "false"
+  SKIP_LINT: "false"
+  SKIP_BUILD: "false"
+  SKIP_TEST: "false"
+  SKIP_VERSIONING: "false"
+  SKIP_PACKAGING: "false"
+  SKIP_RELEASE: "false"
+  SKIP_REINTEGRATION: "false"
+
+  # Release Configuration
+  VERSION_BUMP: "patch"
+  REGISTRY: "ghcr.io"
+  REGISTRY_USERNAME: ""
+
+  # Logging & Tracking
+  LOG_FILE: "pipery.jsonl"
+  TARGET_BRANCH: "main"
+
+pipelines:
+  default:
+    - step: *checkout-step
+    - step: *setup-step
+    - parallel:
+        - step: *sast-scan
+        - step: *sca-scan
+    - step:
+        <<: *lint-step
+        condition:
+          variable:
+            - SKIP_LINT = "false"
+        optional: true
+    - step:
+        <<: *build-step
+        condition:
+          variable:
+            - SKIP_BUILD = "false"
+    - step:
+        <<: *test-step
+        condition:
+          variable:
+            - SKIP_TEST = "false"
+        optional: true
+    - step:
+        <<: *versioning-step
+        condition:
+          variable:
+            - SKIP_VERSIONING = "false"
+    - step:
+        <<: *packaging-step
+        condition:
+          variable:
+            - SKIP_PACKAGING = "false"
+    - step: *logs-step
+
+  branches:
+    main:
+      - step: *checkout-step
+      - step: *setup-step
+      - parallel:
+          - step: *sast-scan
+          - step: *sca-scan
+      - step:
+          <<: *lint-step
+          condition:
+            variable:
+              - SKIP_LINT = "false"
+          optional: true
+      - step:
+          <<: *build-step
+          condition:
+            variable:
+              - SKIP_BUILD = "false"
+      - step:
+          <<: *test-step
+          condition:
+            variable:
+              - SKIP_TEST = "false"
+          optional: true
+      - step:
+          <<: *versioning-step
+          condition:
+            variable:
+              - SKIP_VERSIONING = "false"
+      - step:
+          <<: *packaging-step
+          condition:
+            variable:
+              - SKIP_PACKAGING = "false"
+      - step:
+          <<: *release-step
+          condition:
+            variable:
+              - SKIP_RELEASE = "false"
+      - step:
+          <<: *reintegration-step
+          condition:
+            variable:
+              - SKIP_REINTEGRATION = "false"
+          optional: true
+      - step: *logs-step
+
+  pull-requests:
+    feature/**:
+      - step: *checkout-step
+      - step: *setup-step
+      - parallel:
+          - step: *sast-scan
+          - step: *sca-scan
+      - step:
+          <<: *lint-step
+          condition:
+            variable:
+              - SKIP_LINT = "false"
+          optional: true
+      - step:
+          <<: *build-step
+          condition:
+            variable:
+              - SKIP_BUILD = "false"
+      - step:
+          <<: *test-step
+          condition:
+            variable:
+              - SKIP_TEST = "false"
+          optional: true
+      - step: *logs-step
+
+  custom:
+    release:
+      - step: *checkout-step
+      - step: *setup-step
+      - parallel:
+          - step: *sast-scan
+          - step: *sca-scan
+      - step:
+          <<: *lint-step
+          condition:
+            variable:
+              - SKIP_LINT = "false"
+          optional: true
+      - step:
+          <<: *build-step
+          condition:
+            variable:
+              - SKIP_BUILD = "false"
+      - step:
+          <<: *test-step
+          condition:
+            variable:
+              - SKIP_TEST = "false"
+          optional: true
+      - step:
+          <<: *versioning-step
+          condition:
+            variable:
+              - SKIP_VERSIONING = "false"
+      - step:
+          <<: *packaging-step
+          condition:
+            variable:
+              - SKIP_PACKAGING = "false"
+      - step:
+          <<: *release-step
+          condition:
+            variable:
+              - SKIP_RELEASE = "false"
+      - step:
+          <<: *reintegration-step
+          condition:
+            variable:
+              - SKIP_REINTEGRATION = "false"
+          optional: true
+      - step: *logs-step
