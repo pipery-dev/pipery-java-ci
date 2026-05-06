@@ -64,10 +64,10 @@ definitions:
         name: Code Quality Linting
         image: maven:3.9-eclipse-temurin-21
         script:
-          - echo "Running code quality checks..."
-          - cd ${PROJECT_PATH:-.}
-          - mvn checkstyle:check || true
-          - echo "Lint stage complete"
+          - bash ./src/step-lint.sh
+        env:
+          INPUT_PROJECT_PATH: ${PROJECT_PATH:-.}
+          INPUT_LOG_FILE: ${LOG_FILE:-pipery.jsonl}
 
     - step: &build-step
         name: Build Java Project
@@ -75,10 +75,10 @@ definitions:
         caches:
           - maven
         script:
-          - echo "Building Java project..."
-          - cd ${PROJECT_PATH:-.}
-          - mvn clean package -DskipTests
-          - echo "Build complete"
+          - bash ./src/step-build.sh
+        env:
+          INPUT_PROJECT_PATH: ${PROJECT_PATH:-.}
+          INPUT_LOG_FILE: ${LOG_FILE:-pipery.jsonl}
         artifacts:
           - target/**
 
@@ -88,10 +88,10 @@ definitions:
         caches:
           - maven
         script:
-          - echo "Running Maven tests..."
-          - cd ${PROJECT_PATH:-.}
-          - mvn test
-          - echo "Tests complete"
+          - bash ./src/step-test.sh
+        env:
+          INPUT_PROJECT_PATH: ${PROJECT_PATH:-.}
+          INPUT_LOG_FILE: ${LOG_FILE:-pipery.jsonl}
         artifacts:
           - target/surefire-reports/**
           - target/jacoco-report/**
@@ -100,18 +100,11 @@ definitions:
         name: Version Bump & Tag
         image: maven:3.9-eclipse-temurin-21
         script:
-          - echo "Running versioning step..."
-          - apt-get update && apt-get install -y python3 python3-pip
-          - pip install --quiet pipery-tooling
-          - |
-            pipery-tooling version \
-              --project-path ${PROJECT_PATH:-.} \
-              --version-bump ${VERSION_BUMP:-patch} \
-              --log-file ${LOG_FILE:-pipery.jsonl}
-          - echo "Versioning complete"
-          - cd ${PROJECT_PATH:-.}
-          - grep "^<version>" pom.xml | head -1 > version_info.txt
-          - cat version_info.txt
+          - bash ./src/step-version.sh
+        env:
+          INPUT_PROJECT_PATH: ${PROJECT_PATH:-.}
+          INPUT_VERSION_BUMP: ${VERSION_BUMP:-patch}
+          INPUT_LOG_FILE: ${LOG_FILE:-pipery.jsonl}
         artifacts:
           - version_info.txt
           - ${LOG_FILE:-pipery.jsonl}
@@ -120,10 +113,10 @@ definitions:
         name: Verify Package
         image: maven:3.9-eclipse-temurin-21
         script:
-          - echo "Verifying Java package..."
-          - cd ${PROJECT_PATH:-.}
-          - echo "Java package ready: $(find target -name '*.jar' | head -1)"
-          - echo "Package verification complete"
+          - bash ./src/step-package.sh
+        env:
+          INPUT_PROJECT_PATH: ${PROJECT_PATH:-.}
+          INPUT_LOG_FILE: ${LOG_FILE:-pipery.jsonl}
         artifacts:
           - target/**
 
@@ -132,28 +125,22 @@ definitions:
         image: maven:3.9-eclipse-temurin-21
         trigger: manual
         script:
-          - echo "Publishing Java artifacts to registry..."
-          - cd ${PROJECT_PATH:-.}
-          - |
-            if [ -n "$REGISTRY_PASSWORD" ]; then
-              mvn deploy -DskipTests
-            else
-              echo "Registry credentials not configured, skipping deployment"
-            fi
-          - echo "Release complete"
+          - bash ./src/step-release.sh
+        env:
+          INPUT_PROJECT_PATH: ${PROJECT_PATH:-.}
+          INPUT_LOG_FILE: ${LOG_FILE:-pipery.jsonl}
 
     - step: &reintegration-step
         name: Reintegration to Target Branch
         image: alpine:latest
         trigger: manual
         script:
-          - echo "Reintegration step would update target branch..."
-          - |
-            if [ -z "$GITHUB_TOKEN" ]; then
-              echo "Skipping reintegration: GITHUB_TOKEN not set"
-              exit 0
-            fi
-          - echo "Reintegration complete"
+          - bash ./src/step-reintegrate.sh
+        env:
+          INPUT_PROJECT_PATH: ${PROJECT_PATH:-.}
+          INPUT_LOG_FILE: ${LOG_FILE:-pipery.jsonl}
+          INPUT_TARGET_BRANCH: ${TARGET_BRANCH:-main}
+          GITHUB_TOKEN: ${GITHUB_TOKEN:-}
 
     - step: &logs-step
         name: Collect & Archive Logs
