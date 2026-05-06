@@ -36,36 +36,27 @@ definitions:
 
     - step: &sast-scan
         name: SAST Security Scan
-        image: maven:3.9-eclipse-temurin-21
+        image: python:3.11-alpine
         script:
-          - echo "Running SAST scan using pipery-tooling..."
-          - apt-get update && apt-get install -y python3 python3-pip
-          - pip install --quiet pipery-tooling
-          - |
-            pipery-tooling sast \
-              --project-path ${PROJECT_PATH:-.} \
-              --config ${CONFIG_FILE:-.pipery/config.yaml} \
-              --log-file ${LOG_FILE:-pipery.jsonl}
-          - echo "Running SpotBugs SAST..."
-          - cd ${PROJECT_PATH:-.}
-          - mvn spotbugs:check || true
-          - echo "SAST scan complete"
+          # Refactored: Call shared script instead of inline logic
+          - bash ./src/step-sast.sh
+        env:
+          INPUT_PROJECT_PATH: ${PROJECT_PATH:-.}
+          INPUT_CONFIG_FILE: ${CONFIG_FILE:-.pipery/config.yaml}
+          INPUT_LOG_FILE: ${LOG_FILE:-pipery.jsonl}
         artifacts:
           - ${LOG_FILE:-pipery.jsonl}
 
     - step: &sca-scan
         name: SCA Dependency Scan
-        image: maven:3.9-eclipse-temurin-21
+        image: python:3.11-alpine
         script:
-          - echo "Running SCA scan using pipery-tooling..."
-          - apt-get update && apt-get install -y python3 python3-pip
-          - pip install --quiet pipery-tooling
-          - |
-            pipery-tooling sca \
-              --project-path ${PROJECT_PATH:-.} \
-              --config ${CONFIG_FILE:-.pipery/config.yaml} \
-              --log-file ${LOG_FILE:-pipery.jsonl}
-          - echo "SCA scan complete"
+          # Refactored: Call shared script instead of inline logic
+          - bash ./src/step-sca.sh
+        env:
+          INPUT_PROJECT_PATH: ${PROJECT_PATH:-.}
+          INPUT_CONFIG_FILE: ${CONFIG_FILE:-.pipery/config.yaml}
+          INPUT_LOG_FILE: ${LOG_FILE:-pipery.jsonl}
         artifacts:
           - ${LOG_FILE:-pipery.jsonl}
 
